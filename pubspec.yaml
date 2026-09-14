@@ -1,0 +1,20 @@
+name: cookie_munch
+description: Cookie Munch Flutter/Dart SDK — self-hosted Consent Management Platform. Pure-Dart consent core (mobile + desktop) plus a themed banner widget. Mirrors the web, iOS, Android and React Native SDKs (same consent model and API).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  test: ^1.24.0
+
+flutter:

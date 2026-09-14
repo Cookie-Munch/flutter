@@ -1,0 +1,14 @@
+name: CI
+on:
+  push: { branches: ["**"] }
+  pull_request:
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - name: Analyze + test the Flutter SDK
+        run: flutter pub get && flutter analyze && flutter test
