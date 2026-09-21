@@ -8,4 +8,6 @@ library;
 
 export 'src/client.dart';
 export 'src/consent_state.dart';
+export 'src/regulation.dart';
+export 'src/webview_bridge.dart';
 export 'src/storage.dart';

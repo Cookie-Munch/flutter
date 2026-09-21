@@ -16,6 +16,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'consent_state.dart';
+import 'regulation.dart';
 import 'storage.dart';
 
 /// A self-hosted Cookie Munch consent client.
@@ -40,13 +41,15 @@ class CookieMunchConsent {
     http.Client? httpClient,
     this.region = 'unknown',
     this.storageKey = 'CookieMunch',
+    String? subjectId,
     int Function()? now,
     String Function()? stamp,
   })  : _apiUrl = _trim(apiUrl),
         _storage = storage ?? InMemoryConsentStorage(),
         _http = httpClient ?? http.Client(),
         _now = now ?? (() => DateTime.now().millisecondsSinceEpoch),
-        _stamp = stamp ?? newStamp {
+        _stamp = stamp ?? newStamp,
+        _subjectId = (subjectId?.isEmpty ?? true) ? null : subjectId {
     _state = ConsentState.initial(region: region, stamp: _stamp, now: _now);
   }
 
@@ -124,6 +127,92 @@ class CookieMunchConsent {
 
   /// Whether [category] is currently granted. `necessary` is always `true`.
   bool allows(ConsentCategory category) => _state.allows(category);
+
+  // --- applicable regulation ------------------------------------------------
+
+  /// Who this device's decisions belong to, if the app has said. Deliberately NOT
+  /// persisted with the decision: who is signed in is the app's business and can change
+  /// between launches, so baking a stale account id into a restored record would
+  /// attribute one person's consent to another.
+  String? _subjectId;
+
+  /// Set once the server has told us the regime for this person's real location.
+  Regulation? _serverRegulation;
+  bool _gpc = false;
+  bool _dnt = false;
+
+  /// Which privacy regime applies to this person: GDPR / CCPA / LGPD, opt-in vs
+  /// opt-out, and which signalling framework third parties will read.
+  ///
+  /// Answers immediately and offline from the [region] this client was configured
+  /// with. Call [refreshRegulation] to replace that with the server's IP-derived
+  /// answer — a device's locale tells you where the phone was sold, not where its
+  /// owner is standing.
+  Regulation get applicableRegulation =>
+      _serverRegulation ?? Regulation.resolve(region, gpc: _gpc, dnt: _dnt);
+
+  /// Whether you still owe this person a consent prompt.
+  ///
+  /// `false` once they have made an explicit decision in the app, and `false` when
+  /// an opt-out signal has already expressed a refusal on their behalf. Check this
+  /// before showing a banner: an app that re-prompts someone who already answered
+  /// is both annoying and, under an opt-out regime, wrong.
+  bool get isConsentRequired =>
+      !_state.hasResponse && applicableRegulation.consentRequired;
+
+  /// Records a Global Privacy Control signal. Under an opt-out regime this counts
+  /// as a refusal on this person's behalf, so no prompt is owed; under GDPR
+  /// nothing fires before consent anyway, so the prompt still is.
+  set globalPrivacyControl(bool enabled) {
+    _gpc = enabled;
+    _serverRegulation = null; // the local resolver now has newer information
+  }
+
+  /// Records a legacy Do Not Track signal. Treated exactly like GPC.
+  set doNotTrack(bool enabled) {
+    _dnt = enabled;
+    _serverRegulation = null;
+  }
+
+  // --- cross-surface identity -----------------------------------------------
+
+  /// The account id currently attached to this device's decisions, or null.
+  String? get subjectId => _subjectId;
+
+  /// Attaches this device's decisions to a signed-in account, so one person's consent
+  /// can be correlated across web, iOS, Android and desktop
+  /// (`GET /v1/subjects/:id/consent`).
+  ///
+  /// Set it after sign-in rather than at construction: an app builds its consent client
+  /// at launch, before anyone has signed in. Set it to null on sign-out — continuing to
+  /// send the id would attribute the next person's decisions on a shared device to the
+  /// account that just left.
+  ///
+  /// The id is opaque to us: stored and bound into the tamper-evident hash chain, never
+  /// interpreted. It applies to decisions made from now on; it does not rewrite history.
+  set subjectId(String? id) {
+    _subjectId = (id?.isEmpty ?? true) ? null : id;
+  }
+
+  /// Asks the server which regime applies, based on the IP it sees, and adopts the
+  /// answer. Never throws: offline, or against a server too old to return a
+  /// `regulation` block, the locally resolved regime stays in place — a failed
+  /// refresh must never leave the app with no answer to "do I prompt".
+  Future<Regulation> refreshRegulation() async {
+    try {
+      final res = await _http.get(
+        Uri.parse('$_apiUrl/config/${Uri.encodeComponent(cbid)}'),
+        headers: {'Accept': 'application/json', 'X-CookieMunch-Region': region},
+      );
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final parsed = Regulation.fromConfigJson(res.body);
+        if (parsed != null) _serverRegulation = parsed;
+      }
+    } catch (_) {
+      // offline, or a malformed response — keep the local regime.
+    }
+    return applicableRegulation;
+  }
 
   /// A broadcast stream of state changes (fires on every committed decision).
   Stream<ConsentState> get changes => _controller.stream;
@@ -270,6 +359,9 @@ class CookieMunchConsent {
           'ver': s.ver,
           'utc': s.utc,
           'url': 'app://$cbid',
+          // Omitted entirely when absent, so a decision made while signed out is
+          // identical to one from a build that never had this field.
+          if (_subjectId != null) 'subjectId': _subjectId,
         }),
       );
     } catch (_) {
