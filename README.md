@@ -1,6 +1,6 @@
 # cookie_munch (Flutter / Dart)
 
-The **Cookie Munch** Flutter & Dart SDK for the self-hosted Cookie Munch Consent
+The **Cookie Munch** Flutter & Dart SDK for the Cookie Munch Consent
 Management Platform. It mirrors the web, iOS (Swift), Android (Kotlin) and React
 Native SDKs exactly — same consent model, same `POST /api/v1/consent`, same
 offline-safe behavior — so consent records are uniform across every platform.
