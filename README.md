@@ -33,7 +33,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await CookieMunchConsent.configure(
     cbid: 'your-site-id',
-    apiUrl: 'https://your-server.com',
+    apiUrl: 'https://api.cookiemunch.net',
     region: 'gb',
     // Default storage is in-memory. For durability across restarts:
     // storage: FileConsentStorage('/absolute/path/consent.json'),
