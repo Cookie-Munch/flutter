@@ -219,4 +219,35 @@ void main() {
       expect(c.applicableRegulation.gdprApplies, isTrue);
     });
   });
+
+group('US state law from the server', () {
+  test('parses the state law the server resolved', () {
+    const body = '''
+      {"regulation":{"region":"us-tx","class":"us","regulations":{"gdprApplies":false,"ccpaApplies":true,"lgpdApplies":false},
+      "model":"opt-out","defaultState":"granted","framework":"gpp","forcedOptOut":false,"consentRequired":true,
+      "stateLaw":{"id":"tdpsa","state":"TX","name":"Texas Data Privacy and Security Act","universalOptOut":true,
+      "universalOptOutInForce":true,"sensitiveOptIn":true,"minorOptInUnder":13,"optOut":["sale"],"source":"https://x"}}}
+    ''';
+    final reg = Regulation.fromConfigJson(body)!;
+    expect(reg.stateLaw, isNotNull);
+    expect(reg.stateLaw!.id, 'tdpsa');
+    expect(reg.stateLaw!.state, 'TX');
+    expect(reg.stateLaw!.sensitiveOptIn, isTrue);
+    expect(reg.stateLaw!.minorOptInUnder, 13);
+  });
+
+  test('is null when the server named no state law', () {
+    const body = '''
+      {"regulation":{"region":"de","class":"eu","regulations":{"gdprApplies":true,"ccpaApplies":false,"lgpdApplies":false},
+      "model":"opt-in","defaultState":"denied","framework":"tcf","forcedOptOut":false,"consentRequired":true}}
+    ''';
+    expect(Regulation.fromConfigJson(body)!.stateLaw, isNull);
+  });
+
+  /// A device knows its locale, which is a country at best — never a state. Claiming a
+  /// state law from that would be a guess presented as a legal determination.
+  test('local resolution does not invent one', () {
+    expect(Regulation.resolve('us-tx').stateLaw, isNull);
+  });
+});
 }

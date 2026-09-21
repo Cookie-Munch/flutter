@@ -55,6 +55,55 @@ enum SignalFramework {
       SignalFramework.values.firstWhere((f) => f.wire == value, orElse: () => SignalFramework.none);
 }
 
+/// The US state law governing a visitor, when one does.
+///
+/// There are around twenty comprehensive state laws and they differ on what a consent
+/// UI must do: whether a universal opt-out signal must be honoured, whether sensitive
+/// data needs opt-in, and the age below which a minor needs consent. Only the server
+/// can say which one applies — a device's locale gives a country at best, never a state
+/// — so this is populated from `/config/:cbid` and is null when resolving locally.
+class UsStateLaw {
+  const UsStateLaw({
+    required this.id,
+    required this.state,
+    required this.name,
+    required this.universalOptOut,
+    required this.sensitiveOptIn,
+    required this.minorOptInUnder,
+  });
+
+  /// Stable id, e.g. `tdpsa`.
+  final String id;
+
+  /// Two-letter state code.
+  final String state;
+  final String name;
+
+  /// The law requires honouring a universal opt-out signal.
+  final bool universalOptOut;
+
+  /// Sensitive data needs opt-in consent rather than an opt-out.
+  final bool sensitiveOptIn;
+
+  /// Opt-in required below this age for sale / targeted advertising; 0 = no rule.
+  final int minorOptInUnder;
+
+  static UsStateLaw? fromJson(Object? value) {
+    if (value is! Map) return null;
+    final id = value['id'];
+    final state = value['state'];
+    if (id is! String || state is! String) return null;
+    return UsStateLaw(
+      id: id,
+      state: state,
+      name: value['name'] is String ? value['name'] as String : id,
+      universalOptOut: value['universalOptOutInForce'] == true || value['universalOptOut'] == true,
+      sensitiveOptIn: value['sensitiveOptIn'] == true,
+      minorOptInUnder: value['minorOptInUnder'] is num ? (value['minorOptInUnder'] as num).toInt() : 0,
+    );
+  }
+}
+
 /// The resolved regime for one person.
 class Regulation {
   const Regulation({
@@ -68,6 +117,7 @@ class Regulation {
     required this.framework,
     required this.forcedOptOut,
     required this.consentRequired,
+    this.stateLaw,
   });
 
   /// ISO 3166-1 alpha-2, optionally with a subdivision (`us-ca`).
@@ -89,6 +139,10 @@ class Regulation {
   /// [CookieMunchConsent.isConsentRequired], which also accounts for a decision
   /// this person already made in the app.
   final bool consentRequired;
+
+  /// The US state law governing this person, when the server resolved one. Null
+  /// when resolving locally: a device cannot know which state someone is in.
+  final UsStateLaw? stateLaw;
 
   // EU 27 + EEA + UK, lowercase ISO 3166-1 alpha-2.
   static const Set<String> _euEeaUk = {
@@ -183,6 +237,7 @@ class Regulation {
         // An older server could omit this. Defaulting a missing bool to false
         // would silently suppress every prompt, so it is derived instead.
         consentRequired: reg.containsKey('consentRequired') ? reg['consentRequired'] == true : !forced,
+        stateLaw: UsStateLaw.fromJson(reg['stateLaw']),
       );
     } on FormatException {
       return null;
@@ -193,5 +248,6 @@ class Regulation {
   String toString() =>
       'Regulation(region: $region, class: ${regionClass.wire}, model: ${model.wire}, '
       'gdpr: $gdprApplies, ccpa: $ccpaApplies, lgpd: $lgpdApplies, '
-      'framework: ${framework.wire}, forcedOptOut: $forcedOptOut, consentRequired: $consentRequired)';
+      'framework: ${framework.wire}, forcedOptOut: $forcedOptOut, consentRequired: $consentRequired'
+      '${stateLaw == null ? '' : ', stateLaw: ${stateLaw!.id}'})';
 }
