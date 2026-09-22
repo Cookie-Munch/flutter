@@ -17,6 +17,7 @@ import 'package:http/http.dart' as http;
 
 import 'consent_state.dart';
 import 'regulation.dart';
+import 'localized_copy.dart';
 import 'storage.dart';
 
 /// A self-hosted Cookie Munch consent client.
@@ -41,6 +42,7 @@ class CookieMunchConsent {
     http.Client? httpClient,
     this.region = 'unknown',
     this.storageKey = 'CookieMunch',
+    this.language,
     String? subjectId,
     int Function()? now,
     String Function()? stamp,
@@ -200,19 +202,41 @@ class CookieMunchConsent {
   /// refresh must never leave the app with no answer to "do I prompt".
   Future<Regulation> refreshRegulation() async {
     try {
+      // The same call brings back the regime and the banner's words, so the SDK never
+      // carries forty catalogues of its own.
+      final tag = language;
+      final query = tag == null || tag.isEmpty ? '' : '?lang=${Uri.encodeQueryComponent(tag)}';
       final res = await _http.get(
-        Uri.parse('$_apiUrl/config/${Uri.encodeComponent(cbid)}'),
-        headers: {'Accept': 'application/json', 'X-CookieMunch-Region': region},
+        Uri.parse('$_apiUrl/config/${Uri.encodeComponent(cbid)}$query'),
+        headers: {
+          'Accept': 'application/json',
+          if (tag != null && tag.isNotEmpty) 'Accept-Language': tag,
+          'X-CookieMunch-Region': region,
+        },
       );
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final parsed = Regulation.fromConfigJson(res.body);
         if (parsed != null) _serverRegulation = parsed;
+        final localized = LocalizedCopy.fromConfigJson(res.body);
+        if (localized != null) _copy = localized;
       }
     } catch (_) {
       // offline, or a malformed response — keep the local regime.
     }
     return applicableRegulation;
   }
+
+  /// The language to ask the server for, e.g. `de-AT`. This file stays Flutter-free so it
+  /// runs under `dart test`, so the locale is passed in rather than read from `dart:ui`:
+  /// pass `Localizations.localeOf(context).toLanguageTag()`, or leave it null and the
+  /// server falls back to `Accept-Language` and then the site's own default.
+  final String? language;
+
+  /// The banner's words in this device's language, once the server has answered. Null
+  /// until [refreshRegulation] runs — the banner falls back to English, so an app that has
+  /// never reached the network still asks the question.
+  LocalizedCopy? get copy => _copy;
+  LocalizedCopy? _copy;
 
   /// A broadcast stream of state changes (fires on every committed decision).
   Stream<ConsentState> get changes => _controller.stream;

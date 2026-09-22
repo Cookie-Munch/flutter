@@ -11,5 +11,6 @@ library;
 
 export 'src/client.dart';
 export 'src/consent_state.dart';
+export 'src/localized_copy.dart';
 export 'src/storage.dart';
 export 'src/consent_banner.dart';

@@ -25,22 +25,23 @@ class ConsentBanner extends StatefulWidget {
   const ConsentBanner({
     super.key,
     this.consent,
-    this.title = 'We value your privacy',
-    this.message =
-        'We use cookies and similar technologies to improve your experience. '
-            'You decide what we use.',
-    this.acceptLabel = 'Allow all',
-    this.rejectLabel = 'Reject all',
+    this.title,
+    this.message,
+    this.acceptLabel,
+    this.rejectLabel,
     this.primaryColor = kCookieMunchPrimary,
   });
 
   /// The client to drive. Defaults to [CookieMunchConsent.instance].
   final CookieMunchConsent? consent;
 
-  final String title;
-  final String message;
-  final String acceptLabel;
-  final String rejectLabel;
+  /// Copy overrides. Left null, the banner uses the words the server resolved for this
+  /// device's language, and falls back to English until that answer arrives — a prompt that
+  /// waits for the network is a prompt that does not ask.
+  final String? title;
+  final String? message;
+  final String? acceptLabel;
+  final String? rejectLabel;
   final Color primaryColor;
 
   @override
@@ -50,6 +51,16 @@ class ConsentBanner extends StatefulWidget {
 class _ConsentBannerState extends State<ConsentBanner> {
   StreamSubscription<ConsentState>? _sub;
   late CookieMunchConsent _consent;
+
+  /// Caller's words, then the server's for this device's language, then English.
+  String get _title => widget.title ?? _consent.copy?.title ?? 'We value your privacy';
+  String get _message =>
+      widget.message ??
+      _consent.copy?.body ??
+      'We use cookies and similar technologies to improve your experience. '
+          'You decide what we use.';
+  String get _acceptLabel => widget.acceptLabel ?? _consent.copy?.acceptAll ?? 'Allow all';
+  String get _rejectLabel => widget.rejectLabel ?? _consent.copy?.rejectAll ?? 'Reject all';
 
   @override
   void initState() {
@@ -84,7 +95,12 @@ class _ConsentBannerState extends State<ConsentBanner> {
     if (_consent.hasResponse) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
-    return Material(
+    // Right-to-left copy laid out left-to-right puts the buttons on the wrong side of a
+    // sentence the reader scans the other way.
+    final rtl = _consent.copy?.rtl == true;
+    return Directionality(
+      textDirection: rtl ? TextDirection.rtl : Directionality.of(context),
+      child: Material(
       elevation: 8,
       color: theme.colorScheme.surface,
       child: SafeArea(
@@ -102,13 +118,13 @@ class _ConsentBannerState extends State<ConsentBanner> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                widget.title,
+                _title,
                 style: theme.textTheme.titleMedium
                     ?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Text(
-                widget.message,
+                _message,
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: theme.hintColor),
               ),
@@ -124,7 +140,7 @@ class _ConsentBannerState extends State<ConsentBanner> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      child: Text(widget.rejectLabel),
+                      child: Text(_rejectLabel),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -140,7 +156,7 @@ class _ConsentBannerState extends State<ConsentBanner> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      child: Text(widget.acceptLabel),
+                      child: Text(_acceptLabel),
                     ),
                   ),
                 ],
@@ -148,6 +164,7 @@ class _ConsentBannerState extends State<ConsentBanner> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
